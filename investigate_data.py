@@ -1,7 +1,7 @@
 import json
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.colors as mcolors
 import numpy as np
 
 train_data = "Datasets/force_pose/train.json"
@@ -154,7 +154,7 @@ def plot3DTriangulatedPoints(frames):
     # Create skeleton lines
     lines=[]
     for _ in skeleton:
-        line, = ax.plot([], [], [], lw=2)
+        line, = ax.plot([], [], [], lw=2, color="cornflowerblue")
         lines.append(line)
 
     # Creating the Animation object
