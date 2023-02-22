@@ -2,6 +2,9 @@ import json
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from mpl_toolkits.mplot3d import Axes3D
+import numpy as np
+
+train_data = "Datasets/force_pose/train.json"
 
 mocap_markers = ['CLAV', 'LACRM', 'LASIS', 'LHEEL', 'LLAK',
                'LLEB', 'LLFARM', 'LLHND', 'LLKN', 'LLTOE',
@@ -14,18 +17,12 @@ mocap_markers = ['CLAV', 'LACRM', 'LASIS', 'LHEEL', 'LLAK',
                'RSHANK', 'RTHIGH', 'RUPARM', 'STRM',
                'T1', 'T10', 'THEAD']
 
-skeleton = [(17,15),(15,13),(13,7),(7,9),(7,6),(9,11),
-(6,12),(6,8),(8,10),(12,13),(12,14),(14,16)]
+skeleton = [[16,14,12,6,8,10],[15,13,11,5,7,9],[12,11],[5,6,4,3,5]]
 
 # Helper functions to fetch data and format data
-
 def loadData():
-    train_data = "Datasets/force_pose/train.json"
     data = json.load(open(train_data))
     return data
-
-def getVideoTrial(index):
-    return loadData()[index]
 
 def getMovement(data):
     return data.get("Movement")
@@ -121,16 +118,19 @@ def plotMocap(mocap_data):
     plt.show()
 
 # Update function used for animation of 3D scatter
-def update_3D_triangulated_points(num_steps, frames, xyz_points, ax):
+def update_3D_triangulated_points(num_steps, frames, xyz_points, lines):
     traingulated = frames[num_steps].get("triangulated_pose")
     xs = [point[0] for point in traingulated]
     ys = [point[1] for point in traingulated]
     zs = [point[2] for point in traingulated]
 
     xyz_points._offsets3d = (xs, ys, zs)
+    for idx in range(len(skeleton)):
+        lines[idx].set_data([xs[idx]for idx in skeleton[idx]], [ys[idx]for idx in skeleton[idx]])
+        lines[idx].set_3d_properties([zs[idx]for idx in skeleton[idx]])
 
 def plot3DTriangulatedPoints(frames):
-    num_steps = 311
+    num_steps = len(frames)
 
     # Attaching 3D axis to the figure
     fig = plt.figure()
@@ -145,20 +145,43 @@ def plot3DTriangulatedPoints(frames):
     ax.set(ylim3d=(xyz_limits[1][0], xyz_limits[1][1]), ylabel='Y')
     ax.set(zlim3d=(xyz_limits[2][0], xyz_limits[2][1]), zlabel='Z')
 
+    # Plot floor mesh
+    X, Z = np.meshgrid(np.arange(xyz_limits[0][0], xyz_limits[0][1]), 
+                       np.arange(xyz_limits[2][0], xyz_limits[2][1]))
+    Y = 0*X
+    ax.plot_surface(X, Y, Z, alpha=0.5)  # the horizontal plane
+
+    # Create skeleton lines
+    lines=[]
+    for _ in skeleton:
+        line, = ax.plot([], [], [], lw=2)
+        lines.append(line)
+
     # Creating the Animation object
     ani = animation.FuncAnimation(
-        fig, update_3D_triangulated_points, num_steps, fargs=(frames, xyz_points, ax),interval=100)
+        fig, update_3D_triangulated_points, num_steps, fargs=(frames, xyz_points, lines),interval=100)
     plt.show()
 
 # Functions to show animations
-def showMocap(index):
-    video_trial = getVideoTrial(index)
+def showMocap(video_trial):
     mocap_data = getMOCAP(video_trial)
     plotMocap(mocap_data)
 
-def showTriangulated(index):
-    video_trial = getVideoTrial(index)
+def showTriangulated(video_trial):
     frames = getFrames(video_trial)
     plot3DTriangulatedPoints(frames)
 
-showTriangulated(0)
+def getFirstTrialMovement(movement):
+    data = loadData()
+    movements={}
+    for video_trial in data:
+        move = video_trial.get("movement")
+        movements[move]=None
+        if move==movement:
+            return video_trial
+    print("Could not find movement. Here are all movements: ",
+          list(movements.keys()))
+    exit()
+
+video_trial = getFirstTrialMovement("Squat_Jump_03")
+showTriangulated(video_trial)
