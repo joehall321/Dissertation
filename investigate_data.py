@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.colors as mcolors
 import numpy as np
+import matplotlib.patches as mpatches
 
 train_data = "Datasets/force_pose/train.json"
 
@@ -162,6 +163,55 @@ def plot3DTriangulatedPoints(frames):
         fig, update_3D_triangulated_points, num_steps, fargs=(frames, xyz_points, lines),interval=100)
     plt.show()
 
+# Update function used for animation of 2D GRF graph
+def update_grf_timeline(num_steps, xs, ys, line):
+    x = xs[num_steps]
+    line.set_data([x for y in ys],ys)
+
+def plotGRFs(grfs):
+    num_steps = len(grfs.get("time"))
+
+    # Attaching 2D axis to the figure
+    fig, axis = plt.subplots(3, 1)
+
+    grf_labels=['ground_force1_vx','ground_force1_vy','ground_force1_vz']
+    xs = grfs.get("time")
+    
+    animations=[]
+
+    counter = 0
+    for label1 in grf_labels:
+        ax = axis[counter]
+        counter +=1
+
+        label2 = label1.replace("1", "2")
+        ys1 = grfs.get(label1)
+        ys2 = grfs.get(label2)
+
+        # Create x,y points initially without data
+        points1 = ax.scatter([xs], [ys1], s=1, color="blue")
+        points2 = ax.scatter([xs], [ys2], s=1, color="cornflowerblue")
+
+        # Timeline
+        line, = ax.plot([], [], lw=2, color="red")
+        y_lims=ax.get_ylim()
+        ys = [int(y_lims[0]),int(y_lims[1])]
+
+        y1 = mpatches.Patch(color='blue', label=label1)
+        y2 = mpatches.Patch(color='cornflowerblue', label=label2)
+        ax.legend(handles=[y1,y2])
+
+        ax.set_title(label1.replace("1", ""))
+
+        # Creating the Animation object
+        ani = animation.FuncAnimation(
+            fig, update_grf_timeline, num_steps, fargs=(xs, ys, line),interval=1)
+        animations.append(ani)
+
+    plt.xlabel("Seconds")
+    plt.ylabel("GRFs / Newtons")
+    plt.show()
+
 # Functions to show animations
 def showMocap(video_trial):
     mocap_data = getMOCAP(video_trial)
@@ -170,6 +220,10 @@ def showMocap(video_trial):
 def showTriangulated(video_trial):
     frames = getFrames(video_trial)
     plot3DTriangulatedPoints(frames)
+
+def showGRFs(video_trial):
+    grfs = getGRFs(video_trial)
+    plotGRFs(grfs)
 
 def getFirstTrialMovement(movement):
     data = loadData()
@@ -184,4 +238,4 @@ def getFirstTrialMovement(movement):
     exit()
 
 video_trial = getFirstTrialMovement("Squat_Jump_03")
-showTriangulated(video_trial)
+showGRFs(video_trial)
