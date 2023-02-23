@@ -18,6 +18,9 @@ mocap_markers = ['CLAV', 'LACRM', 'LASIS', 'LHEEL', 'LLAK',
                'RSHANK', 'RTHIGH', 'RUPARM', 'STRM',
                'T1', 'T10', 'THEAD']
 
+cameras = ['cam_17400883', 'cam_17400877', 'cam_17400884', 'cam_17400879', 
+'cam_17400881', 'cam_17400878', 'cam_17364068', 'cam_17400880']
+
 skeleton = [[16,14,12,6,8,10],[15,13,11,5,7,9],[12,11],[5,6,4,3,5]]
 
 # Helper functions to fetch data and format data
@@ -78,8 +81,23 @@ def getTriangulatedLimits(frames):
         y.append(min(ys))
         z.append(max(zs))
         z.append(min(zs))
-    space=1.25
     return ((min(x),max(x)),(min(y),max(y)),(min(z),max(z)))
+
+def get2DKeypointLimits(frames, cam):
+    x = []
+    y = []
+    for frame in frames:
+        keypoints = frame.get(cam).get("keypoints")
+        xs=[]
+        ys=[]
+        for idx in range(0,len(keypoints),3):
+            xs.append(keypoints[idx])
+            ys.append(keypoints[idx+1])
+        x.append(max(xs))
+        x.append(min(xs))
+        y.append(max(ys))
+        y.append(min(ys))
+    return ((min(x),max(x)),(min(y),max(y)))
 
 ############################################################################
 
@@ -205,11 +223,50 @@ def plotGRFs(grfs):
 
         # Creating the Animation object
         ani = animation.FuncAnimation(
-            fig, update_grf_timeline, num_steps, fargs=(xs, ys, line),interval=1)
+            fig, update_grf_timeline, num_steps, fargs=(xs, ys, line))
         animations.append(ani)
 
     plt.xlabel("Seconds")
     plt.ylabel("GRFs / Newtons")
+    plt.show()
+
+# Update function used for animation of 2D scatter
+def update_2D_keypoints(num_steps, frames, xy_points, camera):
+    keypoints = frames[num_steps].get(camera).get("keypoints")
+    xs=[]
+    ys=[]
+    for idx in range(0,len(keypoints),3):
+        xs.append(keypoints[idx])
+        ys.append(keypoints[idx+1])
+    xyz_points._offsets3d = (xs, ys)
+
+def plot2DKeypoints(frames):
+    num_steps = len(frames)
+
+    camera='cam_17400883'
+
+    # Attaching 3D axis to the figure
+    fig = plt.figure()
+    ax = fig.add_subplot()
+
+    # Create x,y,z points initially without data
+    xy_points = ax.scatter([], [])
+    xy_limits = get2DKeypointLimits(frames,camera)
+
+    # Setting the axes properties
+    print(xy_limits)
+    plt.xlim([xy_limits[0][0],xy_limits[0][1]])
+    plt.ylim([xy_limits[1][0],xy_limits[1][1]])
+
+    # Create skeleton lines
+    # lines=[]
+    # for _ in skeleton:
+    #     line, = ax.plot([], [], lw=2, color="cornflowerblue")
+    #     lines.append(line)
+
+    # Creating the Animation object
+    ani = animation.FuncAnimation(
+        fig, update_2D_keypoints, num_steps, fargs=(frames, xy_points, camera),interval=100)
     plt.show()
 
 # Functions to show animations
@@ -225,6 +282,11 @@ def showGRFs(video_trial):
     grfs = getGRFs(video_trial)
     plotGRFs(grfs)
 
+def show2DKeypoints(video_trial):
+    frames = getFrames(video_trial)
+    plot2DKeypoints(frames)
+
+# Fetch first trial data seen for specified movement
 def getFirstTrialMovement(movement):
     data = loadData()
     movements={}
@@ -238,4 +300,4 @@ def getFirstTrialMovement(movement):
     exit()
 
 video_trial = getFirstTrialMovement("Squat_Jump_03")
-showGRFs(video_trial)
+show2DKeypoints(video_trial)
