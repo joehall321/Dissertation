@@ -178,7 +178,7 @@ def plot3DTriangulatedPoints(frames):
 
     # Creating the Animation object
     ani = animation.FuncAnimation(
-        fig, update_3D_triangulated_points, num_steps, fargs=(frames, xyz_points, lines),interval=100)
+        fig, update_3D_triangulated_points, num_steps, fargs=(frames, xyz_points, lines),interval=20)
     plt.show()
 
 # Update function used for animation of 2D GRF graph
@@ -206,9 +206,9 @@ def plotGRFs(grfs):
         ys1 = grfs.get(label1)
         ys2 = grfs.get(label2)
 
-        # Create x,y points initially without data
-        points1 = ax.scatter([xs], [ys1], s=1, color="blue")
-        points2 = ax.scatter([xs], [ys2], s=1, color="cornflowerblue")
+        # Create x,y points with data
+        ax.scatter([xs], [ys1], s=1, color="blue")
+        ax.scatter([xs], [ys2], s=1, color="cornflowerblue")
 
         # Timeline
         line, = ax.plot([], [], lw=2, color="red")
@@ -223,11 +223,13 @@ def plotGRFs(grfs):
 
         # Creating the Animation object
         ani = animation.FuncAnimation(
-            fig, update_grf_timeline, num_steps, fargs=(xs, ys, line))
+            fig, update_grf_timeline, num_steps, fargs=(xs, ys, line),interval=1.6)
         animations.append(ani)
 
     plt.xlabel("Seconds")
     plt.ylabel("GRFs / Newtons")
+    manager = plt.get_current_fig_manager()
+    manager.full_screen_toggle()    
     plt.show()
 
 # Update function used for animation of 2D scatter
@@ -238,7 +240,7 @@ def update_2D_keypoints(num_steps, frames, xy_points, camera):
     for idx in range(0,len(keypoints),3):
         xs.append(keypoints[idx])
         ys.append(keypoints[idx+1])
-    xyz_points._offsets3d = (xs, ys)
+    xy_points.set_offsets((xs,ys))
 
 def plot2DKeypoints(frames):
     num_steps = len(frames)
@@ -249,8 +251,8 @@ def plot2DKeypoints(frames):
     fig = plt.figure()
     ax = fig.add_subplot()
 
-    # Create x,y,z points initially without data
-    xy_points = ax.scatter([], [])
+    # Create x,y points initially without data
+    xy_points = ax.scatter([1], [1])
     xy_limits = get2DKeypointLimits(frames,camera)
 
     # Setting the axes properties
@@ -280,6 +282,7 @@ def showTriangulated(video_trial):
 
 def showGRFs(video_trial):
     grfs = getGRFs(video_trial)
+    print("Total time in seconds:",max(grfs.get("time")))
     plotGRFs(grfs)
 
 def show2DKeypoints(video_trial):
@@ -299,5 +302,7 @@ def getFirstTrialMovement(movement):
           list(movements.keys()))
     exit()
 
-video_trial = getFirstTrialMovement("Squat_Jump_03")
-show2DKeypoints(video_trial)
+manager = plt.get_current_fig_manager()
+manager.full_screen_toggle()
+video_trial = getFirstTrialMovement("Single_Leg_Jump_L_02")
+showGRFs(video_trial)
