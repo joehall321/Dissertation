@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
+import math
 
 class DataFromatter():
 
@@ -35,7 +36,7 @@ class DataFromatter():
     def getMovementTrials(self, movement, data):
         movement_data = []
         for type in data:
-            if movement in type.lower():
+            if movement in type.lower() or movement == "all":
                 movement_data.extend(data[type])
         return movement_data
 
@@ -43,11 +44,15 @@ class DataFromatter():
     #                   ..., x17:[x1,...,xt],y17:[y1,...,yt], z17:[z1,...,zt]}
     def getTriangulatedPose(self, trial):
         frames = trial.get("frames")
-        mass=self.subject_masses.get(trial.get("subject"))
+        max_kps = math.ceil(len(trial.get("grf").get("time"))/12)
+        # print("NUM:",max_kps)
+
+        # if len(frames)!=trial.get("total_frames"):
+        #     print("DATASET NOT COMPLETE:", len(frames),trial.get("total_frames"))
+        #     exit()
 
         # Create dictionary with empty list for 51 points
         keypoints_data = {}
-        keypoints_data.setdefault("mass",[])
         for num in range(1,18):
             keypoints_data.setdefault("x"+str(num),[])
             keypoints_data.setdefault("y"+str(num),[])
@@ -55,9 +60,10 @@ class DataFromatter():
 
         # Populate point lists with data from each frame in trial
         counter=0
-        for frame in frames:
+        for idx in range(len(frames)):
+            if idx == max_kps: break
+            frame = frames[idx]
             pose_kps = frame.get("triangulated_pose")
-            keypoints_data.get("mass").append(mass)
             for kp_idx in range(len(pose_kps)):
                 x,y,z = pose_kps[kp_idx]
                 keypoints_data.get("x"+str(kp_idx+1)).append(x)
@@ -97,10 +103,23 @@ class DataFromatter():
             pose_data[kp_label]=increased_kps
         return pose_data
         
-    def addForcesToData(self, data, forces):
+    def addAccelerationsToData(self, data, forces, mass, num_frames):
+        # print("Forces length: ",len(forces["time"]))
+        # print("Frames: ",num_frames)
+        # print("Forces to frame: ",len(forces["time"])/num_frames)
         for force_label in forces:
+
             if force_label!="time":
-                data[force_label] = forces[force_label]
+
+                avg_accelerations = []
+                for idx in range(0,len(forces[force_label]),12):
+                    fs_to_avg = forces[force_label][idx:idx+12]
+                    avg_accelerations.append((sum(fs_to_avg)/len(fs_to_avg))/mass)
+                    if len(avg_accelerations) == num_frames:
+                        break
+                
+                data[force_label] = avg_accelerations
+
         return data
 
     # Collects and formats data
@@ -113,40 +132,66 @@ class DataFromatter():
             forces = trial.get("grf")
             trial_label = "trail_"+str(idx+1)
 
-            # Get time to be used as data frame index
-            time = [(trial_label,time) for time in forces.get("time")]
-
             pose_data = self.getTriangulatedPose(trial)
-            # print("Before pose:",len(pose_data.get("x1")))
-            pose_data = self.populatePoseGaps(pose_data, len(forces.get("time")))
-            pose_data = self.addForcesToData(pose_data,forces)
-            # print("After pose:",len(pose_data.get("x1")))
-            # print("Force data:",len(forces.get("time")))
-            trial_data.append(pd.DataFrame(pose_data, index=time).astype(float))
+
+            #pose_data = self.populatePoseGaps(pose_data, len(forces.get("time")))
+
+            num_frames = len(pose_data.get("x1"))
+            mass=self.subject_masses.get(trial.get("subject"))
+
+            # Get time to be used as data frame index
+            #time = [(trial_label,time) for time in forces.get("time")]
+
+            # Get time to be used as data frame index
+            frames = [(trial_label,frame) for frame in range(1,num_frames+1)]
+            
+            pose_data = self.addAccelerationsToData(pose_data,forces,mass,num_frames)
+            
+            try:
+                trial_data.append(pd.DataFrame(pose_data,index=frames).astype(float))
+            except Exception as e:
+                print("Num of KP frames:",num_frames)
+                print("Num of forces:",len(forces.get("time")))
+                print("Pose kps length:",len(pose_data.get("x1")))
+                print("AVG Force data length:",len(pose_data.get('ground_force1_vx')))
+                print(self.dict_dims(pose_data))
+                print(e)
+                exit()
 
         return trial_data, pd.concat(trial_data)
+
+    def dict_dims(self, mydict):
+        d1 = len(mydict)
+        d2 = []
+        for d in mydict:
+            d2.append((d,len(mydict[d])))
+        return d1, d2
 
     def validateData(self,data):
         return np.isnan(np.sum(data))
     
-    def formatDataSamples(self, trial_data):
+    def formatDataSamples(self, trial_data, sample_size):
         #Empty lists to be populated using formatted training data
         trainX = []
         trainY = []
 
-        n_future = 1
-        n_past = 12*5
-
         #Reformat input data into a shape: (n_samples x timesteps x n_features)
-        # Forming each x and y by sliding window of n_past data points   
-        # Each trail is seperated in training data by sliding window
+        # Forming each x and y by sliding window of sample_size data points   
+        # Each force predictor is the middle force of key points
         print("FORMATTING DATA TO (n_samples x timesteps x n_features)")
         for trial in trial_data:
-            for idx in range(n_past, len(trial) - n_future +1):
+            for idx in range(sample_size, len(trial)):
+                
+                start = idx - sample_size
+                end = idx-1
+                middle = start+((end-start)/2)
 
-                trainX.append(trial.loc[idx - n_past : idx-1, 0:51])
-                trainY.append(trial.loc[idx, 52:57])
+                trainX.append(trial.loc[idx - sample_size: idx-1, 0:50])
 
+                if middle%2 == 0:
+                    trainY.append(trial.loc[middle, 51:56])
+                else:
+                    trainY.append(trial.loc[math.floor(middle):math.ceil(middle), 51:56].mean())
 
         trainX, trainY = np.array(trainX), np.array(trainY)
 
