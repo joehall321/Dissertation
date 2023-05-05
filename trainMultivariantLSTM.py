@@ -19,7 +19,7 @@ val_path   = "Datasets/force_pose/val.json"
 
 movement   = "all"
 sample_size = 12
-epochs = 100
+epochs = 20
 
 parameters = "ss"+str(sample_size)+"_blstm_64_1024_dense256_lr1e-4_bs64_eps"+str(epochs)
 model_name = movement+"-"+parameters
@@ -34,11 +34,12 @@ train_data_movements = data_formatter.formatTrialMovements(train_data)
 val_data = data_formatter.loadData(val_path)
 val_data_movements = data_formatter.formatTrialMovements(val_data)
 
-movements = list(train_data_movements.keys())
-movements.sort()
 print()
-print("List of movements in trial data:")
-print(movements)
+print("List of movements in training data:")
+print(data_formatter.dict_dims(train_data_movements))
+print()
+print("List of movements in validation data:")
+print(data_formatter.dict_dims(val_data_movements))
 print()
 
 # Filter and return list of trials that are doing a specified movement

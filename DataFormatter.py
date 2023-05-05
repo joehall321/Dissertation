@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 import math
+import collections
 
 class DataFromatter():
 
@@ -22,21 +23,43 @@ class DataFromatter():
     def loadData(self, path):
         data = json.load(open(path))
         return data
+    
+    def flipXZAxes(self, trials):
+        for trial in trials:
+            grfs = trial.get("grf")
+            grfs['ground_force1_vx']=[i * -1 for i in grfs['ground_force1_vx']]
+            grfs['ground_force1_vz']=[i * -1 for i in grfs['ground_force1_vz']]
+            grfs['ground_force2_vx']=[i * -1 for i in grfs['ground_force2_vx']]
+            grfs['ground_force2_vz']=[i * -1 for i in grfs['ground_force2_vz']]
+    
+    def fixFlippedXZAxes(self, movements):
+        self.flipXZAxes(movements["CounterMovementJump"][:3])
+        self.flipXZAxes(movements["SingleLegJumpR"][:3])
+        self.flipXZAxes(movements["SingleLegJumpL"][:3])
+        self.flipXZAxes(movements["SquatJump"][:2])
+        self.flipXZAxes(movements["LSingleLegSquat"][:3])
+        self.flipXZAxes(movements["RSingleLegSquat"][:3])
+        self.flipXZAxes(movements["Squat"][:3])
+        return movements
 
     # Categrises each trial into movement list 
-    def formatTrialMovements(self, train_data):
-        train_movements = {}
+    def formatTrialMovements(self, train_data, flip_xz_flag=False):
+        movements = collections.OrderedDict()
         for trial in train_data:
-            movement=trial.get("movement")
-            train_movements.setdefault(movement,[])
-            train_movements.get(movement).append(trial)
-        return train_movements
+            # Format movements into lists by removing trial numbers and _ as these are not consistent
+            movement=''.join([i for i in trial.get("movement") if not i.isdigit() and i !='_'])
+            movements.setdefault(movement,[])
+            movements.get(movement).append(trial)
+
+        if flip_xz_flag:
+            return self.fixFlippedXZAxes(movements)
+        else: return movements
 
     # Returns joined list of trials for specified movement
     def getMovementTrials(self, movement, data):
         movement_data = []
         for type in data:
-            if movement in type.lower() or movement == "all":
+            if movement.lower() == type.lower() or movement == "all":
                 movement_data.extend(data[type])
         return movement_data
 
