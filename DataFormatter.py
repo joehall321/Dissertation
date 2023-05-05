@@ -5,6 +5,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 import math
 import collections
+import joblib
 
 class DataFromatter():
 
@@ -18,6 +19,8 @@ class DataFromatter():
         "Subject6" : 111.91,
         "Subject7" : 82.64,
         "Subject8" : 90.44 }
+
+        self.avg_mass = sum(self.subject_masses.values())/len(self.subject_masses)
 
     # Load data
     def loadData(self, path):
@@ -61,6 +64,11 @@ class DataFromatter():
         for type in data:
             if movement.lower() == type.lower() or movement == "all":
                 movement_data.extend(data[type])
+        
+        if len(movement_data)==0:
+            print("ERROR: NO DATA WITH MOVEMENT TYPE:",movement)
+            exit()
+
         return movement_data
 
     # Return dictonary of {x1:[x1,...,xt], y1:[y1,...,yt], z1:[z1,...,zt],
@@ -102,20 +110,24 @@ class DataFromatter():
     # Data point gaps are filled by using incremental difference
     def populatePoseGaps(self, pose_data, forces_length):
         num_extra_points = 11
-        # print("Extra points per x:",num_extra_points)
+
         # Loop through keypoints list
         for kp_label in pose_data:
             kps = pose_data.get(kp_label)
             increased_kps=[]
 
-            #Loop through list
+            #Loop frame postions in list
             for kp_idx in range(len(kps)):
                 kp_value = kps[kp_idx]
 
+                # If frame is not last one
                 if kp_idx<len(kps)-1:
+
                     kp_next_value= kps[kp_idx+1]
                     increased_kps.append(kp_value)
                     inc=(kp_next_value-kp_value)/num_extra_points
+
+                    # Add 11 extra points, incrementing difference between frames
                     for _ in range(num_extra_points):
                         kp_value+=inc
                         increased_kps.append(kp_value)
@@ -126,28 +138,35 @@ class DataFromatter():
             pose_data[kp_label]=increased_kps
         return pose_data
         
-    def addAccelerationsToData(self, data, forces, mass, num_frames):
-        # print("Forces length: ",len(forces["time"]))
-        # print("Frames: ",num_frames)
-        # print("Forces to frame: ",len(forces["time"])/num_frames)
+    def addAccelerationsToData(self, data, forces, mass, num_frames, linear_interpolation):
+        
         for force_label in forces:
 
             if force_label!="time":
 
-                avg_accelerations = []
-                for idx in range(0,len(forces[force_label]),12):
-                    fs_to_avg = forces[force_label][idx:idx+12]
-                    avg_accelerations.append((sum(fs_to_avg)/len(fs_to_avg))/mass)
-                    if len(avg_accelerations) == num_frames:
-                        break
-                
-                data[force_label] = avg_accelerations
+                if linear_interpolation:
+                    f_to_add = [f/mass for f in forces[force_label]]
+                    if (len(f_to_add)!=num_frames):
+                        print("Number of pose frames does not equal number of forces")
+                        print("Pose frames length: ",num_frames)
+                        print("Forces length: ",len(f_to_add))
+                        exit()
+                    data[force_label] = f_to_add
+                else:
+                    avg_accelerations = []
+                    for idx in range(0,len(forces[force_label]),12):
+                        fs_to_avg = forces[force_label][idx:idx+12]
+                        avg_accelerations.append((sum(fs_to_avg)/len(fs_to_avg))/mass)
+                        if len(avg_accelerations) == num_frames:
+                            break
+                    
+                    data[force_label] = avg_accelerations
 
         return data
 
     # Collects and formats data
     # creates a list of dataframes 
-    def collectFormatData(self, train_trials):
+    def collectFormatData(self, train_trials, linear_interpolation=False):
         trial_data = []
 
         for idx in range(len(train_trials)):
@@ -155,12 +174,14 @@ class DataFromatter():
             forces = trial.get("grf")
             trial_label = "trail_"+str(idx+1)
 
-            pose_data = self.getTriangulatedPose(trial)
+            data = self.getTriangulatedPose(trial)
 
-            #pose_data = self.populatePoseGaps(pose_data, len(forces.get("time")))
+            if linear_interpolation:
+                data = self.populatePoseGaps(data, len(forces.get("time")))
 
-            num_frames = len(pose_data.get("x1"))
+            num_frames = len(data.get("x1"))
             mass=self.subject_masses.get(trial.get("subject"))
+            #mass = self.avg_mass
 
             # Get time to be used as data frame index
             #time = [(trial_label,time) for time in forces.get("time")]
@@ -168,20 +189,19 @@ class DataFromatter():
             # Get time to be used as data frame index
             frames = [(trial_label,frame) for frame in range(1,num_frames+1)]
             
-            pose_data = self.addAccelerationsToData(pose_data,forces,mass,num_frames)
+            data = self.addAccelerationsToData(data,forces,mass,num_frames,linear_interpolation)
             
             try:
-                trial_data.append(pd.DataFrame(pose_data,index=frames).astype(float))
+                trial_data.append(pd.DataFrame(data,index=frames).astype(float))
             except Exception as e:
                 print("Num of KP frames:",num_frames)
                 print("Num of forces:",len(forces.get("time")))
-                print("Pose kps length:",len(pose_data.get("x1")))
-                print("AVG Force data length:",len(pose_data.get('ground_force1_vx')))
-                print(self.dict_dims(pose_data))
+                print("Pose kps length:",len(data.get("x1")))
+                print("AVG Force data length:",len(data.get('ground_force1_vx')))
+                print(self.dict_dims(data))
                 print(e)
                 exit()
-
-        return trial_data, pd.concat(trial_data)
+        return trial_data
 
     def dict_dims(self, mydict):
         d1 = len(mydict)
@@ -193,7 +213,7 @@ class DataFromatter():
     def validateData(self,data):
         return np.isnan(np.sum(data))
     
-    def formatDataSamples(self, trial_data, sample_size):
+    def formatDataSamples(self, trial_data, sample_size, end_force=False):
         #Empty lists to be populated using formatted training data
         trainX = []
         trainY = []
@@ -202,23 +222,53 @@ class DataFromatter():
         # Forming each x and y by sliding window of sample_size data points   
         # Each force predictor is the middle force of key points
         print("FORMATTING DATA TO (n_samples x timesteps x n_features)")
+        trial_lengths = []
+        counter=0
         for trial in trial_data:
             for idx in range(sample_size, len(trial)):
-                
+                counter+=1
+
                 start = idx - sample_size
                 end = idx-1
                 middle = start+((end-start)/2)
 
                 trainX.append(trial.loc[idx - sample_size: idx-1, 0:50])
-
-                if middle%2 == 0:
-                    trainY.append(trial.loc[middle, 51:56])
+                if end_force:
+                        trainY.append(trial.loc[idx-1, 51:56])
                 else:
-                    trainY.append(trial.loc[math.floor(middle):math.ceil(middle), 51:56].mean())
-
+                    if middle%2 == 0:
+                        trainY.append(trial.loc[middle, 51:56])
+                    else:
+                        trainY.append(trial.loc[math.floor(middle):math.ceil(middle), 51:56].mean())
+            trial_lengths.append(counter)
         trainX, trainY = np.array(trainX), np.array(trainY)
 
         if self.validateData(trainX) or self.validateData(trainY):
             print("ERROR, NaN DETECTED IN DATA")
 
-        return trainX, trainY
+        return trainX, trainY, trial_lengths
+    
+    def loadScaler(self, model_name):
+        # Load model & scaler
+        return joblib.load("Models/scalers/scaler_"+model_name+".gz")
+    
+    def inverseNormalize(self, data, model_name):
+        scaler = self.loadScaler(model_name)
+        return scaler.inverse_transform(data)
+
+    # LSTM uses sigmoid and tanh that are sensitive to magnitude so values need to be normalized
+    # normalize the dataset
+    def NormaliseData(self, trial_data, model_name):
+        try:
+            scaler = self.loadScaler(model_name)
+        except:
+            scaler = StandardScaler()
+            scaler = scaler.fit(pd.concat(trial_data))
+            # Save scaler
+            print("SAVING DATA SCALER")
+            joblib.dump(scaler, "Models/scalers/scaler_"+model_name+".gz")
+
+        for idx in range(len(trial_data)):
+            trial = trial_data[idx]
+            trial_data[idx] = pd.DataFrame(data=scaler.transform(trial))
+        return trial_data
