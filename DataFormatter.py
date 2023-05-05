@@ -76,11 +76,6 @@ class DataFromatter():
     def getTriangulatedPose(self, trial):
         frames = trial.get("frames")
         max_kps = math.ceil(len(trial.get("grf").get("time"))/12)
-        # print("NUM:",max_kps)
-
-        # if len(frames)!=trial.get("total_frames"):
-        #     print("DATASET NOT COMPLETE:", len(frames),trial.get("total_frames"))
-        #     exit()
 
         # Create dictionary with empty list for 51 points
         keypoints_data = {}
@@ -101,7 +96,6 @@ class DataFromatter():
                 keypoints_data.get("y"+str(kp_idx+1)).append(y)
                 keypoints_data.get("z"+str(kp_idx+1)).append(z)
             counter+=1
-            #if(counter==2): break
         return keypoints_data
 
     # Populates pose data so that the number of datapoints matches force data. 
@@ -181,10 +175,6 @@ class DataFromatter():
 
             num_frames = len(data.get("x1"))
             mass=self.subject_masses.get(trial.get("subject"))
-            #mass = self.avg_mass
-
-            # Get time to be used as data frame index
-            #time = [(trial_label,time) for time in forces.get("time")]
 
             # Get time to be used as data frame index
             frames = [(trial_label,frame) for frame in range(1,num_frames+1)]
@@ -218,7 +208,7 @@ class DataFromatter():
         trainX = []
         trainY = []
 
-        #Reformat input data into a shape: (n_samples x timesteps x n_features)
+        # Reformat input data into a shape: (n_samples x timesteps x n_features)
         # Forming each x and y by sliding window of sample_size data points   
         # Each force predictor is the middle force of key points
         print("FORMATTING DATA TO (n_samples x timesteps x n_features)")

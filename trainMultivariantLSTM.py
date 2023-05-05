@@ -12,7 +12,7 @@ val_path   = "Datasets/force_pose/val.json"
 
     
 movement = "all"
-sample_size = 30
+sample_size = 20
 epochs   = 50
 
 parameters = "ss"+str(sample_size)+"_blstm_64_1024_dense256_lr1e-4_bs64_eps"+str(epochs)
@@ -75,15 +75,22 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 # define the LSTM model
 model = Sequential()
 
-model.add(Bidirectional(LSTM(64, activation='relu', return_sequences=True), input_shape=(trainX.shape[1], trainX.shape[2])))
-model.add(Bidirectional(LSTM(1024, activation='relu', return_sequences=False)))
-model.add(Dense(256))
-model.add(Dense(trainY.shape[1]))
+if "blstm" in model_name:
+    model.add(Bidirectional(LSTM(64, activation='relu', return_sequences=True), input_shape=(trainX.shape[1], trainX.shape[2])))
+    model.add(Bidirectional(LSTM(1024, activation='relu', return_sequences=False)))
+    model.add(Dense(256))
+    model.add(Dense(trainY.shape[1]))
 
-# model.add(LSTM(64, activation='relu', return_sequences=True, input_shape=(trainX.shape[1], trainX.shape[2])))
-# model.add(LSTM(1024, activation='relu', return_sequences=False))
-# model.add(Dense(256))
-# model.add(Dense(trainY.shape[1]))
+elif "lstm" in model_name:
+    model.add(LSTM(64, activation='relu', return_sequences=True, input_shape=(trainX.shape[1], trainX.shape[2])))
+    model.add(LSTM(1024, activation='relu', return_sequences=False))
+    model.add(Dense(256))
+    model.add(Dense(trainY.shape[1]))
+
+else: 
+    print("ERROR!")
+    print("Please define LSTM type by including lstm or blstm in model name!")
+    exit()
 
 # Possible exploding gradient problem so changing my optimizer
 optimizer = optimizers.Adam(learning_rate=1e-4)
